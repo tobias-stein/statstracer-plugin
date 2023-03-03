@@ -1,0 +1,170 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#include "StatsTracerPCH.h"
+
+#include "StatsTracerBPLibrary.h"
+#include "TracerComponent.h"
+
+
+// Sets default values for this component's properties
+UTracerComponent::UTracerComponent()
+{
+	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
+	// off to improve performance if you don't need them.
+	PrimaryComponentTick.bCanEverTick = false;
+
+	// set a default tracer name
+	this->TracerName = "DefaultStatsTracer";
+	
+	// try to construct a more appropriate default name
+	{
+		// get owning actor
+		AActor* myActor = this->GetOwner();
+		if (myActor != nullptr)
+		{
+			this->TracerName = FString::Printf(TEXT("%s.StatsTracer"), *myActor->GetName());
+		}
+	}
+	
+	this->TracerDescription = TEXT("");
+}
+
+
+// Called when the game starts
+void UTracerComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (DetectedStats.Num() == 0)
+		return;
+
+	// create a new tracer 
+	ATracer* tracer = nullptr;
+	for (TActorIterator<ATracer> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	{
+		if (ActorItr->GetName().Equals(this->TracerName))
+		{
+			tracer = *ActorItr;
+			break;
+		}
+	}
+
+	// no tracer with that name created yet, create one...
+	if (tracer == nullptr)
+		tracer = UStatsTracerBPLibrary::CreateStatsTracer(GetWorld(), *this->TracerName, *this->TracerDescription);
+
+	if (tracer == nullptr)
+		return;
+
+	// get owning actor
+	AActor* myActor = this->GetOwner();
+
+	for (TFieldIterator<UProperty> PropIt(myActor->GetClass()); PropIt; ++PropIt)
+	{
+		UProperty* property = *PropIt;
+
+		for (int32 i = 0; i < DetectedStats.Num(); ++i)
+		{
+			// get matching property
+			if (property->GetOuter()->GetName().Equals(DetectedStats[i].OutterName)
+				&& property->GetName().Equals(DetectedStats[i].PropertyName)
+				&& property->GetCPPType().Equals(DetectedStats[i].PropertyType))
+			{
+				// stop if this stat is not traced.
+				if (DetectedStats[i].IsTraced == true)
+				{
+					const FString name = DetectedStats[i].AlliasName.IsEmpty() == false ? DetectedStats[i].AlliasName : DetectedStats[i].PropertyName;
+					
+					if (DetectedStats[i].PropertyType.Equals("bool"))
+						tracer->AddBoolStat(*((bool*)property->ContainerPtrToValuePtr<bool>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("int32"))
+						tracer->AddIntStat(*((int32*)property->ContainerPtrToValuePtr<int32>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("float"))
+						tracer->AddFloatStat(*((float*)property->ContainerPtrToValuePtr<float>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("uint8"))
+						tracer->AddByteStat(*((uint8*)property->ContainerPtrToValuePtr<uint8>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("FVector"))
+						tracer->AddVectorStat(*((FVector*)property->ContainerPtrToValuePtr<FVector>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("FRotator"))
+						tracer->AddRotatorStat(*((FRotator*)property->ContainerPtrToValuePtr<FRotator>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+					else if (DetectedStats[i].PropertyType.Equals("FTransform"))
+						tracer->AddTransformStat(*((FTransform*)property->ContainerPtrToValuePtr<FTransform>(myActor)), name, DetectedStats[i].Group, DetectedStats[i].Description, DetectedStats[i].Color.ToFColor(true));
+				}
+
+				// check next stat
+				break;
+			}
+		}
+	}
+}
+
+
+void UTracerComponent::ScanStats()
+{
+	// get owning actor
+	AActor* myActor = this->GetOwner();
+
+	TArray<FTracableStat> temp;
+	temp.Reserve(100);
+
+	// get all actor properties that could be traced
+	for (TFieldIterator<UProperty> PropIt(myActor->GetClass()); PropIt; ++PropIt)
+	{
+		UProperty* property = *PropIt;
+
+		// make sure its tracable
+		if (property->GetCPPType().Equals("bool")
+			|| property->GetCPPType().Equals("int32")
+			|| property->GetCPPType().Equals("float")
+			|| property->GetCPPType().Equals("unit8")
+			|| property->GetCPPType().Equals("FVector")
+			|| property->GetCPPType().Equals("FRotator")
+			|| property->GetCPPType().Equals("FTransform"))
+		{
+			// check if stat is already scanned
+			bool shouldAdd = true;
+			for (int32 i = 0; i < DetectedStats.Num(); ++i)
+			{
+				if (property->GetOuter()->GetName().Equals(DetectedStats[i].OutterName)
+					&& property->GetName().Equals(DetectedStats[i].PropertyName)
+					&& property->GetCPPType().Equals(DetectedStats[i].PropertyType))
+				{
+					temp.Add(DetectedStats[i]);
+					shouldAdd = false;
+					break;
+				}
+			}
+
+			// add stat
+			if(shouldAdd == true)
+				temp.Add(FTracableStat(property->GetOuter()->GetName(), property->GetName(), property->GetCPPType()));
+		}
+	}
+
+	// update stats array
+	this->DetectedStats = temp;
+}
+
+void UTracerComponent::OnComponentCreated()
+{
+	// only allow one tracer component per Actor, check for duplicates.
+	{
+		// get owning actor
+		AActor* myActor = this->GetOwner();
+
+		TArray<UTracerComponent*> temp;
+		myActor->GetComponents<UTracerComponent>(temp);
+
+		if (temp.Num() > 0)
+		{
+			//UnregisterComponent();
+			DestroyComponent();
+			myActor->RemoveInstanceComponent(this);
+			return;
+		}		
+	}
+
+	this->ScanStats();	
+}
+
+

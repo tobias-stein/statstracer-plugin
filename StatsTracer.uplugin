@@ -1,0 +1,36 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "StatsTracer",
+	"Description": "StatsTracer is an analytics tool. It enables you to visualize changes of game stats with high precision and export them as csv content. ",
+	"Category": "Analytics",
+	"CreatedBy": "Tobias Stein (Tobs)",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "com.epicgames.launcher: //ue/marketplace/content/ada7d5f2d64dd480699aae5dd2894d2b6",
+	"SupportURL": "",
+	"EngineVersion": "4.24.0",
+	"CanContainContent": false,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "StatsTracer",
+			"Type": "Developer",
+			"LoadingPhase": "PreLoadingScreen",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Win32"
+			]
+		},
+		{
+			"Name": "StatsTracerEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Win32"
+			]
+		}
+	]
+}
